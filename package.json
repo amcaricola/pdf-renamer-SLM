@@ -1,0 +1,27 @@
+{
+  "name": "pdf-manager",
+  "version": "1.0.0",
+  "description": "PDF Manager - Renombra y organiza PDFs según reglas de negocio",
+  "author": "PDF Manager",
+  "private": true,
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview",
+    "electron:dev": "concurrently \"vite\" \"wait-on http://localhost:5173 && electron .\"",
+    "electron:build": "vite build && electron-packager . \"PDF Manager\" --platform=win32 --arch=x64 --out=release --overwrite --prune=true --ignore=\"\\.7z|^src$|^src/|vite\\.config\\.mjs|AGENTS\\.md\""
+  },
+  "dependencies": {
+    "preact": "^10.26.0",
+    "tesseract.js": "^7.0.0"
+  },
+  "devDependencies": {
+    "@preact/preset-vite": "^2.10.0",
+    "concurrently": "^9.1.0",
+    "electron": "^33.3.0",
+    "electron-packager": "^17.1.2",
+    "vite": "^6.0.0",
+    "wait-on": "^8.0.0"
+  },
+  "main": "main.js"
+}
