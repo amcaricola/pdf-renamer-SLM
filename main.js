@@ -3,6 +3,7 @@ const path = require("path");
 const fs = require("fs");
 const os = require("os");
 const { execSync, exec } = require("child_process");
+const logger = require("./logger");
 
 const isDev = !app.isPackaged;
 
@@ -94,7 +95,7 @@ function identifyType(text) {
   if (/MANIFIESTO DE CARGA/.test(text) && /FECHA:/i.test(text)) {
     return { type: "manifest", subtype: "new" };
   }
-  if (/N[°\*]\s*O\/C:/i.test(text)) {
+  if (/N[°\*]\s*O\s*[\/I]?C:/i.test(text)) {
     const hasGuia = /(?:GUÍA|GUIA)\s*(?:DE\s*)?DESPACHO/i.test(text);
     const isFalabella = /CLIENTE\s+FALABELLA/i.test(text);
     const hasFactura = /N[°\*eE]:\s*\d{5,}/.test(text);
@@ -138,7 +139,7 @@ function extractCopecNumber(text) {
 }
 
 function extractPONumber(text) {
-  const m = text.match(/N[°\*]\s*O\/C:[\s\S]*?(\d{8,})/i);
+  const m = text.match(/N[°\*]\s*O\s*[\/I]?C:\s*(\d{5,})/i);
   return m ? m[1] : null;
 }
 
@@ -222,61 +223,102 @@ async function processFile(filename) {
     return { filename, status: "error", reason: "Archivo no encontrado" };
   }
 
+  let ocrUsed = false;
   let text = pdftotext(filePath);
   if (text.length < 50) {
+    ocrUsed = true;
     try {
       text = await ocrPdf(filePath);
     } catch (ocrErr) {
+      const logPath = logger.writeDocumentLog({
+        outputDir: inputDir,
+        filename,
+        reason: `OCR falló: ${ocrErr.message}`,
+        ocrText: text,
+        ocrUsed: true,
+        patterns: [],
+        extracted: {},
+        result: "error",
+        error: ocrErr.message,
+      });
       return {
         filename,
         status: "error",
         reason: `OCR falló: ${ocrErr.message}`,
+        logFile: logPath ? path.basename(logPath) : null,
       };
     }
   }
 
   const info = identifyType(text);
+  const patterns = [];
+  const extracted = { type: info.type, subtype: info.subtype || null };
+
+  // Patrones de identificación
+  patterns.push(logger.tryPattern("manifiesto old", /manifiesto del transportista impreso el:/i, text));
+  patterns.push(logger.tryPattern("manifiesto new (MANIFIESTO DE CARGA)", /MANIFIESTO DE CARGA/, text));
+  patterns.push(logger.tryPattern("manifiesto new (FECHA:)", /FECHA:/i, text));
+  patterns.push(logger.tryPattern("PO (N° O/C u OIC)", /N[°*]\s*O\s*[\/I]?C:/i, text));
+  patterns.push(logger.tryPattern("Copec GS", /GS\s*\d{5}/i, text));
+  patterns.push(logger.tryPattern("Copec FE", /FE\s*\d{5,}/i, text));
+  patterns.push(logger.tryPattern("Guía despacho", /(?:GUÍA|GUIA)\s*(?:DE\s*)?DESPACHO/i, text));
+  patterns.push(logger.tryPattern("Falabella (CLIENTE FALABELLA)", /CLIENTE\s+FALABELLA/i, text));
+  patterns.push(logger.tryPattern("Factura (N°:)", /N[°*eE]:\s*\d{5,}/, text));
+
   let newName = null;
+  let reason = null;
 
   if (info.type === "manifest") {
+    patterns.push(logger.tryPattern("extract fecha old", /impreso el:\s*(\d{1,2}\s+\w+\s+\d{4})/i, text));
+    patterns.push(logger.tryPattern("extract fecha new", /FECHA:\s*(\d{2})\/(\d{2})\/(\d{4})/i, text));
     const date = extractManifestDate(text, info.subtype);
+    extracted.date = date;
     if (date) newName = `${date}.pdf`;
-    else
-      return {
-        filename,
-        status: "error",
-        reason: "No se pudo extraer fecha del manifiesto",
-      };
+    else reason = "No se pudo extraer fecha del manifiesto";
   } else if (info.type === "copec") {
+    patterns.push(logger.tryPattern("extract GS", /GS\s*(\d{5})/i, text));
+    patterns.push(logger.tryPattern("extract FE copec", /FE\s*(\d{5,})/i, text));
+    patterns.push(logger.tryPattern("extract guía despacho", /(?:GUÍA|GUIA)\s*(?:DE\s*)?DESPACHO[:\s]*(\d{5,})/i, text));
     const num = extractCopecNumber(text);
+    extracted.number = num;
     if (num) newName = `${num}.pdf`;
-    else
-      return {
-        filename,
-        status: "error",
-        reason: "No se pudo extraer número de guía/factura",
-      };
+    else reason = "No se pudo extraer número de guía/factura";
   } else if (info.type === "purchaseOrder") {
+    patterns.push(logger.tryPattern("extract PO", /N[°*]\s*O\s*[\/I]?C:\s*(\d{5,})/i, text));
     const po = extractPONumber(text);
+    extracted.po = po;
     if (po) newName = `${po}.pdf`;
-    else
-      return { filename, status: "error", reason: "No se pudo extraer N° O/C" };
+    else reason = "No se pudo extraer N° O/C";
   } else if (info.type === "falabella") {
+    patterns.push(logger.tryPattern("extract PO", /N[°*]\s*O\s*[\/I]?C:\s*(\d{5,})/i, text));
+    patterns.push(logger.tryPattern("extract FE", /N[°*eE]:\s*(\d{5,})/, text));
     const po = extractPONumber(text);
     const fe = extractFENumber(text);
+    extracted.po = po;
+    extracted.fe = fe;
     if (po && fe) newName = `${po}_${fe}.pdf`;
     else if (po) newName = `${po}.pdf`;
-    else
-      return {
-        filename,
-        status: "error",
-        reason: "No se pudo extraer O/C ni N° factura",
-      };
+    else reason = "No se pudo extraer O/C ni N° factura";
   } else {
+    reason = "Tipo de documento no reconocido";
+  }
+
+  if (reason) {
+    const logPath = logger.writeDocumentLog({
+      outputDir: inputDir,
+      filename,
+      reason,
+      ocrText: text,
+      ocrUsed,
+      patterns,
+      extracted,
+      result: "error",
+    });
     return {
       filename,
       status: "error",
-      reason: "Tipo de documento no reconocido",
+      reason,
+      logFile: logPath ? path.basename(logPath) : null,
     };
   }
 
@@ -294,15 +336,84 @@ async function processFile(filename) {
 
   try {
     fs.renameSync(filePath, path.join(outputDir, newName));
-    return { filename, newName, status: "ok" };
+    const logPath = logger.writeDocumentLog({
+      outputDir: inputDir,
+      filename,
+      reason: null,
+      ocrText: text,
+      ocrUsed,
+      patterns,
+      extracted,
+      result: "ok",
+      newName,
+    });
+    return {
+      filename,
+      newName,
+      status: "ok",
+      logFile: logPath ? path.basename(logPath) : null,
+    };
   } catch (err) {
-    return { filename, status: "error", reason: err.message };
+    const logPath = logger.writeDocumentLog({
+      outputDir: inputDir,
+      filename,
+      reason: err.message,
+      ocrText: text,
+      ocrUsed,
+      patterns,
+      extracted,
+      result: "error",
+      error: err.message,
+    });
+    return {
+      filename,
+      status: "error",
+      reason: err.message,
+      logFile: logPath ? path.basename(logPath) : null,
+    };
   }
 }
 
 function listDoneFiles() {
   if (!outputDir || !fs.existsSync(outputDir)) return [];
   return fs.readdirSync(outputDir).filter((f) => f.endsWith(".pdf"));
+}
+
+function listLogFiles() {
+  if (!inputDir || !fs.existsSync(inputDir)) return [];
+  return fs
+    .readdirSync(inputDir)
+    .filter((f) => /^LOG_.*\.md$/i.test(f))
+    .sort();
+}
+
+function readLogFile(name) {
+  if (!inputDir) return null;
+  const safe = path.basename(name);
+  const p = path.join(inputDir, safe);
+  if (!fs.existsSync(p)) return null;
+  try {
+    return fs.readFileSync(p, "utf-8");
+  } catch {
+    return null;
+  }
+}
+
+function findLogFileFor(filename) {
+  if (!inputDir || !fs.existsSync(inputDir)) return null;
+  const base = path.basename(filename, path.extname(filename));
+  const safe = base.replace(/[^a-zA-Z0-9_-]/g, "_");
+  const files = fs
+    .readdirSync(inputDir)
+    .filter((f) => new RegExp(`^LOG_${safe}_.*\\.md$`, "i").test(f))
+    .sort();
+  if (files.length === 0) return null;
+  const name = files[files.length - 1];
+  try {
+    return { name, content: fs.readFileSync(path.join(inputDir, name), "utf-8") };
+  } catch {
+    return null;
+  }
 }
 
 async function selectFolder() {
@@ -362,6 +473,9 @@ app.on("window-all-closed", () => {
 
 ipcMain.handle("get-files", () => getPdfFiles());
 ipcMain.handle("get-done-files", () => listDoneFiles());
+ipcMain.handle("get-log-files", () => listLogFiles());
+ipcMain.handle("read-log-file", (_e, name) => readLogFile(name));
+ipcMain.handle("get-file-log", (_e, filename) => findLogFileFor(filename));
 ipcMain.handle(
   "process-file",
   async (_e, filename) => await processFile(filename),

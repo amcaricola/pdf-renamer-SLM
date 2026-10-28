@@ -220,6 +220,50 @@ body {
   background: var(--surface2);
 }
 
+.file-actions {
+  display: flex;
+  gap: 4px;
+}
+
+.modal-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.6);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+}
+
+.modal {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  width: 80%;
+  max-width: 900px;
+  max-height: 80vh;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.modal-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--border);
+  font-size: 0.85rem;
+}
+
+.modal-content {
+  padding: 12px;
+  overflow: auto;
+  font-size: 0.75rem;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
 .file-info {
   display: flex;
   align-items: center;
@@ -325,4 +369,60 @@ body {
   font-size: 0.85rem;
   font-style: italic;
   padding: 16px 0;
+}
+
+.logs-section {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 12px;
+  max-height: 260px;
+  overflow: auto;
+}
+
+.log-viewer h2 {
+  font-size: 1rem;
+  margin-bottom: 8px;
+}
+
+.log-viewer-body {
+  display: flex;
+  gap: 12px;
+  height: 200px;
+}
+
+.log-file-list {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  width: 240px;
+  overflow: auto;
+}
+
+.log-file-btn {
+  text-align: left;
+  font-size: 0.75rem;
+  padding: 4px 6px;
+  background: var(--surface2);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  color: var(--text);
+  cursor: pointer;
+}
+
+.log-file-btn.active {
+  border-color: var(--primary);
+  color: var(--primary);
+}
+
+.log-file-content {
+  flex: 1;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 8px;
+  font-size: 0.75rem;
+  overflow: auto;
+  white-space: pre-wrap;
+  word-break: break-word;
 }

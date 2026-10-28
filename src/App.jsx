@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'preact/hooks';
 import { FileCard } from './components/FileCard.jsx';
 import { LogPanel } from './components/LogPanel.jsx';
+import { DocumentLog } from './components/DocumentLog.jsx';
 
 export function App() {
   const [inputDir, setInputDir] = useState(null);
@@ -10,6 +11,10 @@ export function App() {
   const [logs, setLogs] = useState([]);
   const [processing, setProcessing] = useState(false);
   const [currentIndex, setCurrentIndex] = useState(null);
+  const [showLogs, setShowLogs] = useState(false);
+  const [logRefresh, setLogRefresh] = useState(0);
+  const [logModal, setLogModal] = useState(null);
+  const [filesWithLog, setFilesWithLog] = useState(new Set());
 
   const addLog = (msg, type = 'info') => {
     setLogs(prev => [...prev, { msg, type, time: new Date().toLocaleTimeString() }]);
@@ -25,7 +30,18 @@ export function App() {
 
   const refreshFiles = async () => {
     const list = await window.electronAPI.getFiles();
-    setFiles(list.sort());
+    const sorted = list.sort();
+    setFiles(sorted);
+    // detectar qué archivos tienen log asociado
+    try {
+      const checks = await Promise.all(sorted.map(async (f) => {
+        const r = await window.electronAPI.getFileLog(f);
+        return r ? f : null;
+      }));
+      setFilesWithLog(new Set(checks.filter(Boolean)));
+    } catch {
+      setFilesWithLog(new Set());
+    }
   };
 
   const refreshDone = async () => {
@@ -92,9 +108,11 @@ export function App() {
 
       if (result.status === 'ok') {
         addLog(`  ✓ Renombrado a: ${result.newName}`, 'success');
+        if (result.logFile) addLog(`  📝 Log: ${result.logFile}`, 'info');
         processed++;
       } else {
         addLog(`  ✗ Error: ${result.reason}`, 'error');
+        if (result.logFile) addLog(`  📝 Log: ${result.logFile}`, 'info');
         errors++;
       }
     }
@@ -107,6 +125,7 @@ export function App() {
     setProcessing(false);
     await refreshFiles();
     await refreshDone();
+    setLogRefresh((k) => k + 1);
   };
 
   const processOne = async (filename) => {
@@ -115,12 +134,28 @@ export function App() {
 
     if (result.status === 'ok') {
       addLog(`  ✓ Renombrado a: ${result.newName}`, 'success');
+      if (result.logFile) addLog(`  📝 Log: ${result.logFile}`, 'info');
     } else {
       addLog(`  ✗ Error: ${result.reason}`, 'error');
+      if (result.logFile) addLog(`  📝 Log: ${result.logFile}`, 'info');
     }
 
     await refreshFiles();
     await refreshDone();
+    setLogRefresh((k) => k + 1);
+  };
+
+  const viewFileLog = async (filename) => {
+    try {
+      const res = await window.electronAPI.getFileLog(filename);
+      if (res && res.content) {
+        setLogModal({ name: res.name, content: res.content });
+      } else {
+        addLog(`No hay log asociado a: ${filename}`, 'info');
+      }
+    } catch (err) {
+      addLog(`Error al leer log: ${err.message}`, 'error');
+    }
   };
 
   const foldersReady = inputDir && outputDir;
@@ -157,6 +192,9 @@ export function App() {
         <button class="btn btn-secondary" onClick={() => { refreshFiles(); refreshDone(); }} disabled={processing || !foldersReady}>
           🔄 Refrescar
         </button>
+        <button class="btn btn-secondary" onClick={() => setShowLogs((v) => !v)}>
+          {showLogs ? 'Ocultar logs' : 'Ver logs'}
+        </button>
         {foldersReady && (
           <span class="badge pending">{files.length} pendientes</span>
         )}
@@ -181,6 +219,8 @@ export function App() {
                   total={files.length}
                   isProcessing={processing && currentIndex === i}
                   onProcess={() => processOne(f)}
+                  onViewLog={viewFileLog}
+                  hasLog={filesWithLog.has(f)}
                   disabled={processing}
                 />
               ))}
@@ -189,6 +229,22 @@ export function App() {
         </div>
         <LogPanel logs={logs} />
       </div>
+      {showLogs && (
+        <div class="logs-section">
+          <DocumentLog refreshKey={logRefresh} />
+        </div>
+      )}
+      {logModal && (
+        <div class="modal-overlay" onClick={() => setLogModal(null)}>
+          <div class="modal" onClick={(e) => e.stopPropagation()}>
+            <div class="modal-header">
+              <span>{logModal.name}</span>
+              <button class="btn btn-sm" onClick={() => setLogModal(null)}>✕</button>
+            </div>
+            <pre class="modal-content">{logModal.content}</pre>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

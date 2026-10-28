@@ -32,6 +32,8 @@ npm run electron:build
 
 Genera `release/PDF Manager-win32-x64/` con `PDF Manager.exe` autónomo. Sin instalador, solo copiar la carpeta y ejecutar.
 
+> **Nota:** Si el build falla por recursos bloqueados (por ejemplo, la aplicación está en ejecución y bloquea `release/PDF Manager-win32-x64/`), informar al usuario que debe cerrar la aplicación/procesos activos y reintentar. El build siempre debe generarse en la carpeta correspondiente (`release/`); no crear carpetas alternativas (como `release2/`).
+
 ---
 
 ## Reglas de Negocio (tipos de documento)
@@ -112,6 +114,17 @@ Las carpetas de entrada y salida se guardan automáticamente en `%APPDATA%/PDF M
 ### Conflictos de nombres
 
 Si ya existe un archivo con el mismo nombre en la carpeta de salida, se agrega un sufijo numérico (`_1`, `_2`, etc.).
+
+### Logs de procesamiento
+
+Por cada archivo procesado se genera `LOG_<documentName>_<date>.md` en la **carpeta de entrada** (junto a los PDFs no procesados). El programa no los detecta como PDFs, pero sí como archivos asociados a los fallados/exitosos.
+
+El log incluye:
+- Razón por la cual no funcionó (si aplica)
+- Resultado del OCR
+- Resultado de cada patrón intentado
+
+En la app, cada item tiene un botón 📝 para ver su log asociado (si existe).
 
 ---
 
