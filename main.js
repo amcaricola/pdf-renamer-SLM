@@ -336,22 +336,11 @@ async function processFile(filename) {
 
   try {
     fs.renameSync(filePath, path.join(outputDir, newName));
-    const logPath = logger.writeDocumentLog({
-      outputDir: inputDir,
-      filename,
-      reason: null,
-      ocrText: text,
-      ocrUsed,
-      patterns,
-      extracted,
-      result: "ok",
-      newName,
-    });
+    // Solo se generan logs para casos de error (diagnóstico de OCR/reconocimiento)
     return {
       filename,
       newName,
       status: "ok",
-      logFile: logPath ? path.basename(logPath) : null,
     };
   } catch (err) {
     const logPath = logger.writeDocumentLog({

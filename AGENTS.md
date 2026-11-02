@@ -117,7 +117,7 @@ Si ya existe un archivo con el mismo nombre en la carpeta de salida, se agrega u
 
 ### Logs de procesamiento
 
-Por cada archivo procesado se genera `LOG_<documentName>_<date>.md` en la **carpeta de entrada** (junto a los PDFs no procesados). El programa no los detecta como PDFs, pero sí como archivos asociados a los fallados/exitosos.
+Solo cuando un archivo **no se puede procesar** se genera `LOG_<documentName>_<date>.md` en la **carpeta de entrada** (junto a los PDFs no procesados), para diagnosticar errores de OCR/reconocimiento. Si el procesamiento es exitoso, no se guarda ningún log. El programa no los detecta como PDFs.
 
 El log incluye:
 - Razón por la cual no funcionó (si aplica)
